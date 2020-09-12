@@ -1,0 +1,7 @@
+(
+('Australia', None, pingListAustralia),
+('LoL', None, pingListLeagueOfLegends),
+('Google', None, pingListGoogle),
+('Null', None, pingListNullIP),
+('Test New Menu Item', None, testAdd),
+)
