@@ -7,7 +7,7 @@
           exit
           
 
-##------------------> 2) You can add more ping locations by adding a new ip on line 48 of test_systray.py
+##------------------> 2) You can add more ping locations by adding a new ip and function on line 48 of test_systray.py
 ##---------/ australia = '203.24.100.125'
 ##---------/ def pingListAustralia(systray):
 ##---------/    if asyncState.pingTarget != australia:
