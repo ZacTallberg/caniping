@@ -1,5 +1,11 @@
 
-##------------------> 1) To run this program, pipenv install after cloning, then run the .bat file, right click to change options of locations to ping!
+##------------------> 1) To run this program, pipenv install after cloning, 
+ Edit the .bat file with your python path, then the path to this .py file--
+ example file contents: 
+
+          "{{YOUR PYTHON PATH}}" "{{YOUR PATH TO HERE}}\test_systray.py"
+          exit
+          
 
 ##------------------> 2) You can add more ping locations by adding a new ip on line 48 of test_systray.py
 ##---------/ australia = '203.24.100.125'
