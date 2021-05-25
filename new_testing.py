@@ -21,6 +21,9 @@ import win32event
 import servicemanager
 import socket
 
+## THIS WHOLE SETUP IS ARCHAIC, JUST USE RUNTIME_STORAGE FOR JIMMINY CRICKETS
+## ...still cool
+
 
 class AppServerSvc (win32serviceutil.ServiceFramework):
     _svc_name_ = "Ping-Check"
