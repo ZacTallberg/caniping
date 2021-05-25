@@ -102,7 +102,7 @@ async def test_ping(ip):
 
 async def restart_systray(systray):
     systray.shutdown()
-    systray = SysTrayIcon("grey_icon.ico", "null_internet", asyncState.menu_options, on_quit=quitApplication)
+    systray = SysTrayIcon("grey_icon.ico", "caniping", asyncState.menu_options, on_quit=quitApplication)
     systray.start()
     return True
 
