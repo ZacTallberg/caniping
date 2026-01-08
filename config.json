@@ -20,5 +20,6 @@
   "default_target": "Google",
   "ping_interval": 1,
   "timeout": 1,
-  "log_file": "systray_ping.log"
+  "log_file": "systray_ping.log",
+  "dashboard_port": 8080
 }
