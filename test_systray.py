@@ -1,211 +1,194 @@
-from infi.systray import SysTrayIcon
-import aioping
-import logging
-import time
-import pydash
 import asyncio
-import datetime
-from pydash import py_
-import sys
-import ctypes
-import os
-import win32process
+import json
+import logging
 import math
+import os
+import sys
+import datetime
+from typing import List, Dict, Any, Optional
 
+import aioping
+from infi.systray import SysTrayIcon
 
-active_ping = '8.8.8.8'
-test_ping = '0.0.0.0'
-min_ms = '0'
-avg_ms = '0'
-max_ms = '0'
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+logger = logging.getLogger(__name__)
 
-def quitApplication(systray):
-    if asyncState.shutdown_now == True:
+CONFIG_FILE = 'config.json'
+
+class PingApp:
+    def __init__(self):
+        self.config: Dict[str, Any] = {}
+        self.targets: List[Dict[str, str]] = []
+        self.current_target: Optional[Dict[str, str]] = None
+        self.systray: Optional[SysTrayIcon] = None
+        self.running = False
+        self.loop = asyncio.get_event_loop()
+
+        # Statistics
+        self.total_pings = 0
+        self.failed_pings = 0
+        self.consecutive_disconnects = 0
+        self.start_time = datetime.datetime.now()
+
+        # State for pinging
+        self.ping_task = None
+
+    def load_config(self):
         try:
-            sys.exit(0)
-        except SystemExit:
-            os._exit(0)
-    else:
-        print('not shutting down')
+            if os.path.exists(CONFIG_FILE):
+                with open(CONFIG_FILE, 'r') as f:
+                    self.config = json.load(f)
+            else:
+                logger.warning(f"Config file {CONFIG_FILE} not found. Using defaults.")
+                self.config = {
+                    "targets": [{"name": "Google", "host": "8.8.8.8"}],
+                    "default_target": "Google",
+                    "ping_interval": 1,
+                    "timeout": 1
+                }
 
-def quitNow(systray):
-    try:
-        sys.exit(0)
-    except SystemExit:
-        os._exit(0)
-
-time_values = []
-response = None
-ip_list = ['8.8.8.8',]
-ping_target = '8.8.8.8'
-australia = '203.24.100.125'
-leagueoflegends = '104.160.131.3'
-google = '8.8.8.8'
-nullIP = '192.168.3.1'
-
-# async def pingReturnAustralia(systray):
-#     return '139.130.4.5'
-def pingListAustralia(systray):
-    if asyncState.pingTarget != australia:
-        asyncState.pingTarget = australia
-
-    # if ip_list[0] != australia:
-    #     ip_list.clear()
-    #     ip_list.append(australia)
-# async def pingReturnLeagueOfLegends(systray): 
-#     return '139.130.4.5'
-def pingListLeagueOfLegends(systray):
-    if asyncState.pingTarget != leagueoflegends:
-        asyncState.pingTarget = leagueoflegends 
-    # if ip_list[0] != leagueoflegends:
-    #     ip_list.clear()
-    #     ip_list.append(leagueoflegends)
-# async def pingReturnGoogle(systray):
-#     return '8.8.8.8'
-def pingListGoogle(systray):
-    if asyncState.pingTarget != google:
-        asyncState.pingTarget = google
-    # if ip_list[0] != google:
-    #     ip_list.clear()
-    #     ip_list.append(google)
-
-def pingListNullIP(systray):
-    if asyncState.pingTarget != nullIP:
-        asyncState.pingTarget = nullIP
-    # if ip_list[0] != nullIP:
-    #     ip_list.clear()
-    #     ip_list.append(nullIP)
-
-async def addMenuOption(asyncState, menu_item):
-    menu = asyncState.menu_options 
-    menu_list = list(menu)
-    menu_list.append(menu_item)
-    menu = tuple(menu_list)
-    asyncState.menu_options = menu
-
-def stopMenu(systray):
-    systray.shutdown()
-
-def testAdd(systray):
-    asyncState.restarting = True
-
-def newMenu(systray):
-    print(asyncState.loop_running)
-    pass
-
-async def get_target():
-    return ip_list[0]
-
-async def test_ping(ip):
-    delay = await aioping.ping(ip, timeout=1)
-    return delay
-
-async def restart_systray(systray):
-    systray.shutdown()
-    systray = SysTrayIcon("grey_icon.ico", "caniping", asyncState.menu_options, on_quit=quitApplication)
-    systray.start()
-    return True
-
-async def GetGrammar():
-    if asyncState.numberOfDisconnects == 1:
-        return 'time'
-    else:
-        return 'times'
-
-
-
-async def ping(systray, asyncState):
-    asyncState.total += 1
-    connectivity_string = str(round((1 - (asyncState.disconnected/asyncState.total))*100, 1))
-    if systray:
-        try:
-            # ping_target = await get_target()
-            ping_target = asyncState.pingTarget
-            delay = await test_ping(ping_target)
-            delay_string = str(math.floor(delay*1000))
-            ping_string = str(ping_target)
-            grammar = await GetGrammar()
-            display = "Ping to {} took {}ms   Uptime: {}%   I have disconnected {} {} since {}".format(ping_string, delay_string, connectivity_string, asyncState.numberOfDisconnects, grammar, asyncState.startTime)
-            print(display)
-            systray.update(icon='./green_icon.ico')
-            asyncState.counter = 0
-            asyncState.connectBool = False
-            await asyncio.sleep(1)
+            self.targets = self.config.get('targets', [])
             
-        except TimeoutError:
-            if asyncState.connectBool == False:
-                asyncState.numberOfDisconnects += 1
-                asyncState.connectBool = True
-            asyncState.disconnected += 1
-            asyncState.counter += 1
-            grammar = await GetGrammar()
-            display = 'No Internet for {} seconds   Uptime: {}%   I have disconnected {} {} since {}'.format(asyncState.counter, connectivity_string, asyncState.numberOfDisconnects, grammar, asyncState.startTime)
-            print(display)
-            systray.update(icon='./red_icon.ico')
-    else:
-        print('not pinging')
+            # Set log file if specified
+            log_file = self.config.get('log_file')
+            if log_file:
+                file_handler = logging.FileHandler(log_file)
+                file_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+                logger.addHandler(file_handler)
 
-async def shell(asyncState):
-    
-    while True:
-        if not asyncState.loop_running and not asyncState.restarting:
-            systray = SysTrayIcon("grey_icon.ico", "null_internet", asyncState.menu_options, on_quit=quitApplication)
-            asyncState.systray = systray
-            systray.start()
-            asyncState.loop_running = True
+        except Exception as e:
+            logger.error(f"Error loading config: {e}")
+            sys.exit(1)
 
-        if asyncState.loop_running and asyncState.restarting:
-            test_input = ('test_item', None, newMenu)
-            await addMenuOption(asyncState, test_input)
-            await restart_systray(systray)
-            asyncState.restarting = False
+    def get_menu_options(self):
+        menu_options = []
+        for target in self.targets:
+            # We need to capture the target in the closure.
+            # In Python loops, the variable is shared, so we use a default argument or functools.partial
+            def make_callback(t):
+                return lambda systray: self.set_target(t)
 
-        if systray:
-            await ping(systray, asyncState)
+            menu_options.append((target['name'], None, make_callback(target)))
 
-        
+        menu_options.append(("Reload Config", None, self.reload_config_callback))
+        return menu_options
 
-def restartSystray(systray):
-    systray.shutdown()
-    systray = SysTrayIcon('grey_icon.ico', 'null_internet', menu_options, on_quit=quitApplication)
-    systray.start()
+    def set_target(self, target):
+        logger.info(f"Switching target to {target['name']} ({target['host']})")
+        self.current_target = target
+        # Reset specific stats if needed, or keep cumulative
+        self.consecutive_disconnects = 0
 
-try:
-    with open ('menu_items.txt') as file:
-        menu_text = file.read()
-    
-    asyncState = type('', (), {})()
-    asyncState.startTime = datetime.datetime.now().strftime("%H:%M %m-%d-%Y")
-    asyncState.pingTarget = '8.8.8.8'
-    asyncState.loop_running = False
-    asyncState.restarting = False
-    asyncState.systray = None
-    asyncState.connectBool = False
-    asyncState.total = 0
-    asyncState.disconnected = 0
-    asyncState.numberOfDisconnects = 0
-    asyncState.counter = 0
-    menu = list(menu_text)
-    # asyncState.menu_options = menu
-    asyncState.menu_options = (
-        ('Australia', None, pingListAustralia),
-        ('LoL', None, pingListLeagueOfLegends),
-        ('Google', None, pingListGoogle),
-        ('Null', None, pingListNullIP),
-        # ('Test New Menu Item', None, testAdd),
-    )
-    asyncState.shutdown_now = False
-    loop = asyncio.get_event_loop()
-    asyncio.ensure_future(shell(asyncState))
-    loop.run_forever()
-except KeyboardInterrupt:
-    # quitApplication(systray)
-    try:
-        sys.exit(0)
-    except SystemExit:
-        os._exit(0)
-finally:
-    loop.close()
-        # quitApplication(systray)
+    def reload_config_callback(self, systray):
+        logger.info("Reloading configuration...")
+        self.load_config()
+        # Note: We can't easily update the menu of the running systray with infi.systray
+        # without restarting it. Restarting it from a callback (which is in the systray thread)
+        # requires care. For now, we'll just reload targets. If the menu needs to change,
+        # we might need to restart the app or accept that the menu is stale until restart.
+        # But if we just updated the ping parameters, that takes effect immediately.
+        # If the user wants to see new targets in the menu, they currently have to restart the app.
+        logger.info("Configuration reloaded. Note: Restart application to update menu items if targets changed.")
 
+    def start_systray(self):
+        menu_options = self.get_menu_options()
+        self.systray = SysTrayIcon(
+            "grey_icon.ico",
+            "Ping Monitor",
+            tuple(menu_options),
+            on_quit=self.on_quit
+        )
+        self.systray.start()
 
+    def on_quit(self, systray):
+        self.running = False
+        # Stop the asyncio loop
+        logger.info("Quitting application...")
+        # We can't stop the loop directly from this thread easily if it's run_forever.
+        # But we can set a flag that the coroutine checks.
+
+    async def ping_loop(self):
+        self.running = True
+
+        # Select default target
+        default_name = self.config.get('default_target')
+        self.current_target = next((t for t in self.targets if t['name'] == default_name), self.targets[0])
+
+        logger.info(f"Starting ping loop for {self.current_target['name']}")
+
+        while self.running:
+            if not self.current_target:
+                await asyncio.sleep(1)
+                continue
+
+            host = self.current_target['host']
+            timeout = self.config.get('timeout', 1)
+            interval = self.config.get('ping_interval', 1)
+
+            try:
+                self.total_pings += 1
+                delay = await aioping.ping(host, timeout=timeout)
+                # Success
+                ms = math.floor(delay * 1000)
+                self.consecutive_disconnects = 0
+
+                uptime = 100.0
+                if self.total_pings > 0:
+                    uptime = ((self.total_pings - self.failed_pings) / self.total_pings) * 100.0
+
+                status_msg = f"Ping to {self.current_target['name']} ({host}): {ms}ms\nUptime: {uptime:.1f}%"
+
+                # Update icon to green
+                if self.systray:
+                    self.systray.update(icon="green_icon.ico", hover_text=status_msg)
+
+                logger.debug(status_msg.replace('\n', ' '))
+
+            except TimeoutError:
+                self.failed_pings += 1
+                self.consecutive_disconnects += 1
+
+                uptime = 100.0
+                if self.total_pings > 0:
+                    uptime = ((self.total_pings - self.failed_pings) / self.total_pings) * 100.0
+
+                status_msg = f"TIMEOUT: {self.current_target['name']} ({host})\nDisconnected for {self.consecutive_disconnects * interval}s\nUptime: {uptime:.1f}%"
+
+                # Update icon to red
+                if self.systray:
+                    self.systray.update(icon="red_icon.ico", hover_text=status_msg)
+
+                logger.warning(status_msg.replace('\n', ' '))
+
+            except Exception as e:
+                logger.error(f"Ping error: {e}")
+                if self.systray:
+                    self.systray.update(icon="grey_icon.ico", hover_text=f"Error: {str(e)}")
+
+            # Wait for next interval
+            await asyncio.sleep(interval)
+
+        # Cleanup
+        if self.systray:
+            self.systray.shutdown()
+
+    def run(self):
+        self.load_config()
+        self.start_systray()
+        try:
+            self.loop.run_until_complete(self.ping_loop())
+        except KeyboardInterrupt:
+            pass
+        finally:
+            self.loop.close()
+
+if __name__ == "__main__":
+    app = PingApp()
+    app.run()
